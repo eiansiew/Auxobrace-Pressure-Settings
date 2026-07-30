@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auxobrace Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- NEW: Chart.js Library -->
     <style>
         body { font-family: 'Inter', sans-serif; }
         /* Make the slider look a bit nicer */
@@ -27,6 +28,17 @@
                 <span id="livePressure">0.0</span>
                 <span class="text-2xl text-slate-400 ml-2">kPa</span>
             </div>
+        </div>
+
+        <!-- NEW: Graph Dropdown Toggle -->
+        <button id="toggleGraphBtn" class="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold py-3 px-6 rounded-xl border border-slate-200 mb-4 transition-all pointer-events-none opacity-30">
+            <span>Live Pressure Graph</span>
+            <svg id="graphChevron" class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <!-- NEW: Graph Container (Hidden by default) -->
+        <div id="graphContainer" class="hidden bg-white border border-slate-100 rounded-xl p-4 shadow-sm mb-8 w-full h-48">
+            <canvas id="pressureChart"></canvas>
         </div>
 
         <!-- Settings (Initially Hidden) -->
@@ -67,6 +79,54 @@
         const targetSlider = document.getElementById('targetSlider');
         const targetLabel = document.getElementById('targetLabel');
 
+        // NEW: Graph Elements
+        const toggleGraphBtn = document.getElementById('toggleGraphBtn');
+        const graphContainer = document.getElementById('graphContainer');
+        const graphChevron = document.getElementById('graphChevron');
+        const ctx = document.getElementById('pressureChart').getContext('2d');
+
+        // NEW: Chart.js Initialization
+        const maxDataPoints = 60; // Keeps a rolling window of the last 60 readings
+        const pressureChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(maxDataPoints).fill(''), // Empty labels for x-axis
+                datasets: [{
+                    label: 'Pressure (kPa)',
+                    data: Array(maxDataPoints).fill(0),
+                    borderColor: '#3b82f6', // Tailwind blue-500
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0, // Hides the dots to create a clean EKG-style line
+                    fill: true,
+                    tension: 0.4 // Smooths out the curves
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false, // Turned off for better live-streaming performance
+                scales: {
+                    y: { 
+                        beginAtZero: true,
+                        max: 45, // Cap the visual graph just above the 40 limit
+                        grid: { color: '#f1f5f9' }
+                    },
+                    x: { display: false } // Hide time labels to keep it clean
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                }
+            }
+        });
+
+        // NEW: Toggle Graph Visibility
+        toggleGraphBtn.addEventListener('click', () => {
+            graphContainer.classList.toggle('hidden');
+            graphChevron.classList.toggle('rotate-180');
+        });
+
         // 1. Handle Connect Button Click
         connectBtn.addEventListener('click', async () => {
             if (bleDevice && bleDevice.gatt.connected) {
@@ -106,8 +166,9 @@
                 connectBtn.classList.replace('bg-blue-600', 'bg-red-500');
                 connectBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-600');
                 
-                // Enable settings panel
+                // Enable settings and graph panels
                 settingsPanel.classList.remove('opacity-30', 'pointer-events-none');
+                toggleGraphBtn.classList.remove('opacity-30', 'pointer-events-none');
 
                 // Read the current target from the ESP32 to sync the slider
                 const targetVal = await targetCharacteristic.readValue();
@@ -127,6 +188,12 @@
             // Decode the byte array back into a string
             const pressureString = new TextDecoder().decode(value);
             livePressure.innerText = pressureString;
+            
+            // NEW: Push new data to the graph and slide the window
+            const pressureVal = parseFloat(pressureString);
+            pressureChart.data.datasets[0].data.push(pressureVal);
+            pressureChart.data.datasets[0].data.shift(); // Remove the oldest point
+            pressureChart.update();
         }
 
         // 3. Handle Slider Changes (Send to ESP32)
@@ -158,6 +225,11 @@
             connectBtn.classList.replace('bg-red-500', 'bg-blue-600');
             connectBtn.classList.replace('hover:bg-red-600', 'hover:bg-blue-700');
             settingsPanel.classList.add('opacity-30', 'pointer-events-none');
+            toggleGraphBtn.classList.add('opacity-30', 'pointer-events-none');
+            
+            // NEW: Clear graph data on disconnect
+            pressureChart.data.datasets[0].data.fill(0);
+            pressureChart.update();
         }
 
     </script>
