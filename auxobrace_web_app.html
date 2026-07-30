@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auxobrace Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Make the slider look a bit nicer */
+        input[type=range] {
+            accent-color: #3b82f6; /* Tailwind blue-500 */
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
+        
+        <h1 class="text-3xl font-bold text-slate-800 mb-2">Auxobrace Pressure Settings</h1>
+        <p id="statusText" class="text-slate-500 mb-8">Ready to connect.</p>
+
+        <!-- Live Data Display -->
+        <div class="bg-slate-50 rounded-xl p-6 border border-slate-100 mb-8 shadow-inner">
+            <h2 class="text-sm uppercase tracking-widest text-slate-400 font-semibold mb-2">Live Pressure</h2>
+            <div class="text-6xl font-black text-blue-600 flex items-baseline justify-center">
+                <span id="livePressure">0.0</span>
+                <span class="text-2xl text-slate-400 ml-2">kPa</span>
+            </div>
+        </div>
+
+        <!-- Settings (Initially Hidden) -->
+        <div id="settingsPanel" class="opacity-30 pointer-events-none transition-opacity duration-300 mb-8">
+            <h2 class="text-sm uppercase tracking-widest text-slate-400 font-semibold mb-4">Target Pressure</h2>
+            
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-slate-500 font-medium">Soft (10)</span>
+                <span id="targetLabel" class="text-2xl font-bold text-slate-800">40.0</span>
+                <span class="text-slate-500 font-medium">Firm (40)</span>
+            </div>
+            
+            <input type="range" id="targetSlider" min="10" max="40" step="1" value="40" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+            <p class="text-xs text-slate-400 mt-2">Adjusting this sends data directly to the hardware.</p>
+        </div>
+
+        <!-- Connect Button -->
+        <button id="connectBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-all active:scale-95">
+            Connect via Bluetooth
+        </button>
+
+    </div>
+
+    <script>
+        // UUIDs MUST match the ESP32 Code
+        const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const PRESSURE_CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+        const TARGET_CHAR_UUID = "cba1d466-344c-4be3-ab3f-189f80dd7518";
+
+        let bleDevice = null;
+        let targetCharacteristic = null;
+
+        // UI Elements
+        const connectBtn = document.getElementById('connectBtn');
+        const statusText = document.getElementById('statusText');
+        const livePressure = document.getElementById('livePressure');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const targetSlider = document.getElementById('targetSlider');
+        const targetLabel = document.getElementById('targetLabel');
+
+        // 1. Handle Connect Button Click
+        connectBtn.addEventListener('click', async () => {
+            if (bleDevice && bleDevice.gatt.connected) {
+                bleDevice.gatt.disconnect();
+                return;
+            }
+
+            try {
+                statusText.innerText = "Scanning for Auxobrace...";
+                
+                // Request the device
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'Auxobrace' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+                // Connect to GATT Server
+                statusText.innerText = "Connecting...";
+                const server = await bleDevice.gatt.connect();
+
+                // Get the Service
+                const service = await server.getPrimaryService(SERVICE_UUID);
+
+                // Get the Characteristics
+                const pressureCharacteristic = await service.getCharacteristic(PRESSURE_CHAR_UUID);
+                targetCharacteristic = await service.getCharacteristic(TARGET_CHAR_UUID);
+
+                // Subscribe to live pressure updates
+                await pressureCharacteristic.startNotifications();
+                pressureCharacteristic.addEventListener('characteristicvaluechanged', handlePressureUpdate);
+
+                // Update UI
+                statusText.innerText = "Connected \u2714\uFE0F";
+                connectBtn.innerText = "Disconnect";
+                connectBtn.classList.replace('bg-blue-600', 'bg-red-500');
+                connectBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-600');
+                
+                // Enable settings panel
+                settingsPanel.classList.remove('opacity-30', 'pointer-events-none');
+
+                // Read the current target from the ESP32 to sync the slider
+                const targetVal = await targetCharacteristic.readValue();
+                const currentTargetStr = new TextDecoder().decode(targetVal);
+                targetSlider.value = parseFloat(currentTargetStr);
+                targetLabel.innerText = parseFloat(currentTargetStr).toFixed(1);
+
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "Connection failed or cancelled.";
+            }
+        });
+
+        // 2. Handle Incoming Live Data
+        function handlePressureUpdate(event) {
+            const value = event.target.value;
+            // Decode the byte array back into a string
+            const pressureString = new TextDecoder().decode(value);
+            livePressure.innerText = pressureString;
+        }
+
+        // 3. Handle Slider Changes (Send to ESP32)
+        // We use 'input' for visual feedback, and 'change' to actually send Bluetooth data 
+        // to avoid flooding the ESP32 with hundreds of messages while dragging.
+        targetSlider.addEventListener('input', (e) => {
+            targetLabel.innerText = parseFloat(e.target.value).toFixed(1);
+        });
+
+        targetSlider.addEventListener('change', async (e) => {
+            if (!targetCharacteristic) return;
+            const newValue = e.target.value;
+            
+            try {
+                // Convert the number to a string, then to bytes
+                const encoder = new TextEncoder();
+                await targetCharacteristic.writeValue(encoder.encode(newValue.toString()));
+                console.log(`Sent new target: ${newValue}`);
+            } catch (error) {
+                console.error("Failed to write to device", error);
+            }
+        });
+
+        // 4. Handle Disconnection
+        function onDisconnected() {
+            statusText.innerText = "Device disconnected.";
+            livePressure.innerText = "0.0";
+            connectBtn.innerText = "Connect via Bluetooth";
+            connectBtn.classList.replace('bg-red-500', 'bg-blue-600');
+            connectBtn.classList.replace('hover:bg-red-600', 'hover:bg-blue-700');
+            settingsPanel.classList.add('opacity-30', 'pointer-events-none');
+        }
+
+    </script>
+</body>
+</html>
