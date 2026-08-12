@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auxobrace Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- NEW: Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         /* Make the slider look a bit nicer */
@@ -18,7 +18,7 @@
 
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
         
-        <h1 class="text-3xl font-bold text-slate-800 mb-2">Auxobrace Pressure Settings</h1>
+        <h1 class="text-3xl font-bold text-slate-800 mb-2">Auxobrace Settings</h1>
         <p id="statusText" class="text-slate-500 mb-8">Ready to connect.</p>
 
         <!-- Live Data Display -->
@@ -30,15 +30,33 @@
             </div>
         </div>
 
-        <!-- NEW: Graph Dropdown Toggle -->
+        <!-- Graph Dropdown Toggle -->
         <button id="toggleGraphBtn" class="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold py-3 px-6 rounded-xl border border-slate-200 mb-4 transition-all pointer-events-none opacity-30">
             <span>Live Pressure Graph</span>
             <svg id="graphChevron" class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
         </button>
 
-        <!-- NEW: Graph Container (Hidden by default) -->
+        <!-- Graph Container (Hidden by default) -->
         <div id="graphContainer" class="hidden bg-white border border-slate-100 rounded-xl p-4 shadow-sm mb-8 w-full h-48">
             <canvas id="pressureChart"></canvas>
+        </div>
+
+        <!-- Usage Stats Dropdown Toggle -->
+        <button id="toggleStatsBtn" class="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold py-3 px-6 rounded-xl border border-slate-200 mb-4 transition-all pointer-events-none opacity-30">
+            <span>Usage Statistics</span>
+            <svg id="statsChevron" class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        </button>
+
+        <!-- Stats Container (Hidden by default) -->
+        <div id="statsContainer" class="hidden bg-white border border-slate-100 rounded-xl p-6 shadow-sm mb-8 w-full text-left">
+            <div class="mb-4">
+                <p class="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Lifetime Uses</p>
+                <p id="statTotal" class="text-2xl font-bold text-slate-800">0</p>
+            </div>
+            <div>
+                <p class="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Time Since Last Use</p>
+                <p id="statGap" class="text-2xl font-bold text-slate-800">0h 0m</p>
+            </div>
         </div>
 
         <!-- Settings (Initially Hidden) -->
@@ -63,10 +81,11 @@
     </div>
 
     <script>
-        // UUIDs MUST match the ESP32 Code
-        const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        // CRITICAL: These MUST perfectly match your ESP32 Code
+        const SERVICE_UUID = "4fafc202-1fb5-459e-8fcc-c5c9c331914b";
         const PRESSURE_CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
         const TARGET_CHAR_UUID = "cba1d466-344c-4be3-ab3f-189f80dd7518";
+        const STATS_CHAR_UUID = "f1a073f1-d0b4-4b8a-9e19-5d27b9df0996";
 
         let bleDevice = null;
         let targetCharacteristic = null;
@@ -79,40 +98,47 @@
         const targetSlider = document.getElementById('targetSlider');
         const targetLabel = document.getElementById('targetLabel');
 
-        // NEW: Graph Elements
+        // Stats Elements
+        const toggleStatsBtn = document.getElementById('toggleStatsBtn');
+        const statsContainer = document.getElementById('statsContainer');
+        const statsChevron = document.getElementById('statsChevron');
+        const statTotal = document.getElementById('statTotal');
+        const statGap = document.getElementById('statGap');
+
+        // Graph Elements
         const toggleGraphBtn = document.getElementById('toggleGraphBtn');
         const graphContainer = document.getElementById('graphContainer');
         const graphChevron = document.getElementById('graphChevron');
         const ctx = document.getElementById('pressureChart').getContext('2d');
 
-        // NEW: Chart.js Initialization
+        // Chart.js Initialization
         const maxDataPoints = 60; // Keeps a rolling window of the last 60 readings
         const pressureChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: Array(maxDataPoints).fill(''), // Empty labels for x-axis
+                labels: Array(maxDataPoints).fill(''), 
                 datasets: [{
                     label: 'Pressure (kPa)',
                     data: Array(maxDataPoints).fill(0),
-                    borderColor: '#3b82f6', // Tailwind blue-500
+                    borderColor: '#3b82f6', 
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     borderWidth: 2,
-                    pointRadius: 0, // Hides the dots to create a clean EKG-style line
+                    pointRadius: 0, 
                     fill: true,
-                    tension: 0.4 // Smooths out the curves
+                    tension: 0.4 
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false, // Turned off for better live-streaming performance
+                animation: false, 
                 scales: {
                     y: { 
                         beginAtZero: true,
-                        max: 45, // Cap the visual graph just above the 40 limit
+                        max: 45, 
                         grid: { color: '#f1f5f9' }
                     },
-                    x: { display: false } // Hide time labels to keep it clean
+                    x: { display: false } 
                 },
                 plugins: {
                     legend: { display: false },
@@ -121,10 +147,15 @@
             }
         });
 
-        // NEW: Toggle Graph Visibility
+        // Toggle Menus
         toggleGraphBtn.addEventListener('click', () => {
             graphContainer.classList.toggle('hidden');
             graphChevron.classList.toggle('rotate-180');
+        });
+
+        toggleStatsBtn.addEventListener('click', () => {
+            statsContainer.classList.toggle('hidden');
+            statsChevron.classList.toggle('rotate-180');
         });
 
         // 1. Handle Connect Button Click
@@ -137,10 +168,9 @@
             try {
                 statusText.innerText = "Scanning for Auxobrace...";
                 
-                // Request the device
+                // BYPASS NAME CACHE: We ONLY look for the UUID, ignoring the device name entirely!
                 bleDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'Auxobrace' }],
-                    optionalServices: [SERVICE_UUID]
+                    filters: [{ services: [SERVICE_UUID] }]
                 });
 
                 bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
@@ -155,26 +185,36 @@
                 // Get the Characteristics
                 const pressureCharacteristic = await service.getCharacteristic(PRESSURE_CHAR_UUID);
                 targetCharacteristic = await service.getCharacteristic(TARGET_CHAR_UUID);
+                const statsCharacteristic = await service.getCharacteristic(STATS_CHAR_UUID);
 
                 // Subscribe to live pressure updates
                 await pressureCharacteristic.startNotifications();
                 pressureCharacteristic.addEventListener('characteristicvaluechanged', handlePressureUpdate);
 
-                // Update UI
-                statusText.innerText = "Connected \u2714\uFE0F";
-                connectBtn.innerText = "Disconnect";
-                connectBtn.classList.replace('bg-blue-600', 'bg-red-500');
-                connectBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-600');
+                // Subscribe to Usage Stats updates
+                await statsCharacteristic.startNotifications();
+                statsCharacteristic.addEventListener('characteristicvaluechanged', handleStatsUpdate);
                 
-                // Enable settings and graph panels
-                settingsPanel.classList.remove('opacity-30', 'pointer-events-none');
-                toggleGraphBtn.classList.remove('opacity-30', 'pointer-events-none');
+                // Read the initial stats immediately upon connection to populate the UI
+                const initialStatsVal = await statsCharacteristic.readValue();
+                handleStatsUpdate({ target: { value: initialStatsVal } });
 
                 // Read the current target from the ESP32 to sync the slider
                 const targetVal = await targetCharacteristic.readValue();
                 const currentTargetStr = new TextDecoder().decode(targetVal);
                 targetSlider.value = parseFloat(currentTargetStr);
                 targetLabel.innerText = parseFloat(currentTargetStr).toFixed(1);
+
+                // Update UI visually
+                statusText.innerText = "Connected \u2714\uFE0F";
+                connectBtn.innerText = "Disconnect";
+                connectBtn.classList.replace('bg-blue-600', 'bg-red-500');
+                connectBtn.classList.replace('hover:bg-blue-700', 'hover:bg-red-600');
+                
+                // Enable settings and dropdown panels
+                settingsPanel.classList.remove('opacity-30', 'pointer-events-none');
+                toggleGraphBtn.classList.remove('opacity-30', 'pointer-events-none');
+                toggleStatsBtn.classList.remove('opacity-30', 'pointer-events-none');
 
             } catch (error) {
                 console.error(error);
@@ -185,20 +225,36 @@
         // 2. Handle Incoming Live Data
         function handlePressureUpdate(event) {
             const value = event.target.value;
-            // Decode the byte array back into a string
             const pressureString = new TextDecoder().decode(value);
             livePressure.innerText = pressureString;
             
-            // NEW: Push new data to the graph and slide the window
+            // Push new data to the graph and slide the window
             const pressureVal = parseFloat(pressureString);
             pressureChart.data.datasets[0].data.push(pressureVal);
-            pressureChart.data.datasets[0].data.shift(); // Remove the oldest point
+            pressureChart.data.datasets[0].data.shift(); 
             pressureChart.update();
         }
 
-        // 3. Handle Slider Changes (Send to ESP32)
-        // We use 'input' for visual feedback, and 'change' to actually send Bluetooth data 
-        // to avoid flooding the ESP32 with hundreds of messages while dragging.
+        // 3. Handle Incoming Stats Data
+        function handleStatsUpdate(event) {
+            const value = event.target.value;
+            const statsString = new TextDecoder().decode(value); // e.g. "5,120"
+            
+            const parts = statsString.split(',');
+            if (parts.length === 2) {
+                const total = parseInt(parts[0]);
+                const totalMinutes = parseInt(parts[1]);
+                
+                // Convert raw minutes into a clean Hours/Minutes format
+                const hours = Math.floor(totalMinutes / 60);
+                const mins = totalMinutes % 60;
+                
+                statTotal.innerText = total;
+                statGap.innerText = `${hours}h ${mins}m`;
+            }
+        }
+
+        // 4. Handle Slider Changes (Send to ESP32)
         targetSlider.addEventListener('input', (e) => {
             targetLabel.innerText = parseFloat(e.target.value).toFixed(1);
         });
@@ -208,7 +264,6 @@
             const newValue = e.target.value;
             
             try {
-                // Convert the number to a string, then to bytes
                 const encoder = new TextEncoder();
                 await targetCharacteristic.writeValue(encoder.encode(newValue.toString()));
                 console.log(`Sent new target: ${newValue}`);
@@ -217,7 +272,7 @@
             }
         });
 
-        // 4. Handle Disconnection
+        // 5. Handle Disconnection
         function onDisconnected() {
             statusText.innerText = "Device disconnected.";
             livePressure.innerText = "0.0";
@@ -226,8 +281,9 @@
             connectBtn.classList.replace('hover:bg-red-600', 'hover:bg-blue-700');
             settingsPanel.classList.add('opacity-30', 'pointer-events-none');
             toggleGraphBtn.classList.add('opacity-30', 'pointer-events-none');
+            toggleStatsBtn.classList.add('opacity-30', 'pointer-events-none');
             
-            // NEW: Clear graph data on disconnect
+            // Clear graph data
             pressureChart.data.datasets[0].data.fill(0);
             pressureChart.update();
         }
