@@ -12,6 +12,17 @@
         input[type=range] {
             accent-color: #3b82f6; /* Tailwind blue-500 */
         }
+        /* Custom thin scrollbar for the dashboard */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1; /* slate-300 */
+            border-radius: 20px;
+        }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
@@ -34,61 +45,71 @@
         </div>
 
         <!-- SCROLLABLE BOTTOM SECTION -->
-        <div class="p-6 overflow-y-auto flex-grow text-center">
-
-            <!-- Graph Dropdown Toggle -->
-            <button id="toggleGraphBtn" class="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold py-3 px-6 rounded-xl border border-slate-200 mb-4 transition-all pointer-events-none opacity-30">
-            <canvas id="pressureChart"></canvas>
-        </div>
-
-        <!-- Usage Stats Dropdown Toggle -->
-        <button id="toggleStatsBtn" class="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold py-3 px-6 rounded-xl border border-slate-200 mb-4 transition-all pointer-events-none opacity-30">
-            <span>Usage Statistics</span>
-            <svg id="statsChevron" class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-        </button>
-
-        <!-- Stats Container (Hidden by default) -->
-        <div id="statsContainer" class="hidden bg-white border border-slate-100 rounded-xl p-6 shadow-sm mb-8 w-full text-left">
-            <div class="mb-4">
-                <p class="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Lifetime Uses</p>
-                <p id="statTotal" class="text-2xl font-bold text-slate-800">0</p>
-            </div>
-            <div>
-                <p class="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Time Since Last Use</p>
-                <p id="statGap" class="text-2xl font-bold text-slate-800">0h 0m</p>
-            </div>
+        <div class="overflow-y-auto flex-grow w-full custom-scrollbar">
             
-            <!-- NEW: CSV Download Button -->
-            <button id="downloadCsvBtn" class="mt-6 w-full bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                Download Data (.csv)
-            </button>
-            
-            <!-- NEW: Reset Stats Button -->
-            <button id="resetStatsBtn" class="mt-3 w-full bg-red-50 hover:bg-red-100 text-red-600 text-sm font-semibold py-3 px-4 rounded-xl transition-all duration-200">
-                Reset Statistics
-            </button>
-        </div>
+            <!-- INNER PADDING WRAPPER: Keeps everything away from the absolute edges -->
+            <div class="p-6 flex flex-col gap-4 text-center">
 
-        <!-- Settings (Initially Hidden) -->
-        <div id="settingsPanel" class="opacity-30 pointer-events-none transition-opacity duration-300 mb-8">
-            <h2 class="text-sm uppercase tracking-widest text-slate-400 font-semibold mb-4">Target Pressure</h2>
-            
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-slate-500 font-medium">Soft (10)</span>
-                <span id="targetLabel" class="text-2xl font-bold text-slate-800">40.0</span>
-                <span class="text-slate-500 font-medium">Firm (40)</span>
-            </div>
-            
-            <input type="range" id="targetSlider" min="10" max="40" step="1" value="40" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
-            <p class="text-xs text-slate-400 mt-2">Adjusting this sends data directly to the hardware.</p>
-        </div>
+                <!-- Graph Dropdown Toggle -->
+                <button id="toggleGraphBtn" class="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold py-3 px-6 rounded-xl border border-slate-200 transition-all pointer-events-none opacity-30">
+                    <span>Live Graph</span>
+                    <svg id="graphChevron" class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
 
-        <!-- Connect Button -->
-        <button id="connectBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-all active:scale-95">
-            Connect via Bluetooth
-        </button>
+                <!-- Graph Container (Hidden by default) -->
+                <div id="graphContainer" class="hidden bg-white border border-slate-100 rounded-xl p-4 shadow-sm w-full h-56">
+                    <canvas id="pressureChart"></canvas>
+                </div>
 
+                <!-- Usage Stats Dropdown Toggle -->
+                <button id="toggleStatsBtn" class="w-full flex items-center justify-between bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold py-3 px-6 rounded-xl border border-slate-200 transition-all pointer-events-none opacity-30">
+                    <span>Usage Statistics</span>
+                    <svg id="statsChevron" class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+
+                <!-- Stats Container (Hidden by default) -->
+                <div id="statsContainer" class="hidden bg-white border border-slate-100 rounded-xl p-6 shadow-sm w-full text-left">
+                    <div class="mb-4">
+                        <p class="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Lifetime Uses</p>
+                        <p id="statTotal" class="text-2xl font-bold text-slate-800">0</p>
+                    </div>
+                    <div>
+                        <p class="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">Time Since Last Use</p>
+                        <p id="statGap" class="text-2xl font-bold text-slate-800">0h 0m</p>
+                    </div>
+                    
+                    <!-- CSV Download Button -->
+                    <button id="downloadCsvBtn" class="mt-6 w-full bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Download Data (.csv)
+                    </button>
+                    
+                    <!-- Reset Stats Button -->
+                    <button id="resetStatsBtn" class="mt-3 w-full bg-red-50 hover:bg-red-100 text-red-600 text-sm font-semibold py-3 px-4 rounded-xl transition-all duration-200">
+                        Reset Statistics
+                    </button>
+                </div>
+
+                <!-- Settings (Initially Hidden) -->
+                <div id="settingsPanel" class="opacity-30 pointer-events-none transition-opacity duration-300 w-full mt-4 mb-4">
+                    <h2 class="text-sm uppercase tracking-widest text-slate-400 font-semibold mb-4 text-left">Target Pressure</h2>
+                    
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-slate-500 font-medium text-sm">Soft (10)</span>
+                        <span id="targetLabel" class="text-3xl font-bold text-slate-800">40.0</span>
+                        <span class="text-slate-500 font-medium text-sm">Firm (40)</span>
+                    </div>
+                    
+                    <input type="range" id="targetSlider" min="10" max="40" step="1" value="40" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    <p class="text-xs text-slate-400 mt-3 text-center">Adjusting this sends data directly to the hardware.</p>
+                </div>
+
+                <!-- Connect Button -->
+                <button id="connectBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-all active:scale-95 mt-2">
+                    Connect via Bluetooth
+                </button>
+
+            </div> <!-- END INNER PADDED WRAPPER -->
         </div> <!-- END SCROLLABLE SECTION -->
     </div> <!-- END MAIN CARD -->
 
